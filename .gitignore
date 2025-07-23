@@ -1,0 +1,23 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*.class
+
+# Virtual environments
+venv_tf219/
+venv_tf13/
+venv_py310/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Model files (ถ้าไม่อยากเอาขึ้น Git)
+*.h5
+*.pt
+*.ckpt
+
+# Others
+.DS_Store
