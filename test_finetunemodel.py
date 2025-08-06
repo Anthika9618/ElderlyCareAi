@@ -14,20 +14,19 @@ import tkinter as tk
 import add_camera_gui
 import mediapipe as mp
 import tensorflow as tf
+from collections import deque
 from dotenv import load_dotenv
 from PIL import Image, ImageTk
 from flask import Flask, request, jsonify
+from tkinter import messagebox, simpledialog
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import load_model
-from tkinter import simpledialog, messagebox
+from tkinter import simpledialog, messagebox, Toplevel
 from urllib.parse import urlparse, urlunparse, quote
 
 # ==================================================  set env  =======================================
 
-load_dotenv() 
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-
+ENV_PATH = ".env"
 
 # ================================================== Flask Setup ======================================
 
@@ -48,12 +47,49 @@ TRAINING_DATA_FILE = "training_data.csv"
 
 model_lock = threading.Lock () 
 
-# ============================================ ประกาศตัวแปร Media Pipe.  ===================================
+# ============================================ ประกาศตัวแปร Media Pipe.  ==================================
 
 mp_hands = mp.solutions.hands
 mp_pose = mp.solutions.pose
 
-# ============================================ Train Model จากข้อมูลใหม่ =====================================
+
+
+# ========================================== โหลด username / password จาก .env ทุกครั้งที่เรียก  ==============
+def get_credentials():
+    load_dotenv(ENV_PATH, override=True)
+    username = os.getenv("ADMIN_USERNAME")
+    password = os.getenv("ADMIN_PASSWORD")
+    return username, password
+
+# แก้ไขรหัสผ่านในไฟล์ .env แล้วโหลดใหม่ทันที
+def update_env_password(new_password):
+    with open(ENV_PATH, "r") as file:
+        lines = file.readlines()
+
+    with open(ENV_PATH, "w") as file:
+        for line in lines:
+            if line.startswith("ADMIN_PASSWORD="):
+                file.write(f"ADMIN_PASSWORD={new_password}\n")
+            else:
+                file.write(line)
+
+    load_dotenv(ENV_PATH, override=True)  # โหลดใหม่หลังแก้
+
+
+
+# ================================== ประกาศ Global history  ของตำแหน่งข้อมือ ===============================
+
+
+wrist_history = {
+    'left_x': deque(maxlen=15),
+    'left_y': deque(maxlen=15),
+    'right_x': deque(maxlen=15),
+    'right_y': deque(maxlen=15)
+}
+
+
+# ============================================ Train Model จากข้อมูลใหม่ ====================================
+
 
 def retrain_model_thread() :
     global model
@@ -156,7 +192,7 @@ last_debug_log_time = [0] * len(stream_sources)
 
 # สำหรับเก็บเวลาที่เริ่มล้มจริงๆ (นิ่ง)
 fall_start_time = [None] * len(stream_sources)
-FALL_ALERT_DELAY = 30  # วินาทีที่ต้องนิ่งก่อนแจ้งเตือน
+FALL_ALERT_DELAY = 20  # วินาทีที่ต้องนิ่งก่อนแจ้งเตือน
 
 
 # ==================================================== Login GUI ==========================================
@@ -165,11 +201,24 @@ def login_and_start():
     def verify_login():
         username = username_entry.get()
         password = password_entry.get()
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        
+        username_env, password_env = get_credentials()
+        
+        if username == username_env and password == password_env:
             login_win.destroy()
             main()
         else:
-            messagebox.showerror("Login Failed", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+            messagebox.showerror("Login Failed", "Username or Password is incorrect.")
+
+ 
+    def reset_password() :
+        confirm = messagebox.askyesno("Reset Password", "Do you want to reset your password.")
+        if confirm :
+            new_pass = simpledialog.askstring("Reset Password", "Enter your new password.", show="*")
+            if new_pass :
+                update_env+password(new_pass)
+                messagebox.showinfo("Success", "Reset password successfully")
+
 
     login_win = tk.Tk()
     login_win.title("Login")
@@ -187,7 +236,7 @@ def login_and_start():
     entry_font = ("Arial", 14)
 
     # ช่องว่างด้านบน
-    tk.Label(login_win, text="Login", font=("Arial", 18, "bold")).pack(pady=15)
+    tk.Label(login_win, text="Admin Login", font=("Arial", 18, "bold")).pack(pady=15)
 
     # Username
     tk.Label(login_win, text="Username :", font=label_font).pack(pady=(5, 2))
@@ -202,6 +251,9 @@ def login_and_start():
     # Login button
     tk.Button(login_win, text="Login", command=verify_login, font=("Arial", 14), fg="black", width=15).pack(pady=20)
 
+    tk.Button(login_win, text="forget Password", command=reset_password, font=("Arial", 12), fg="red", bd=0).pack()
+
+    
     login_win.mainloop()
 
 # ==================================================== เก็บข้อมูลเพื่อไปทำ Online Training =================================
@@ -233,7 +285,9 @@ class CameraApp:
         self.fall_detected_flags = [False] * len (self.frames)
         self.popup_shown_flags = [False] * len (self.frames)
 
-        # ============================================== Scrollable canvas ================================================
+
+        # ============================================== Scrollable canvas ================================================ 
+        
         self.canvas = tk.Canvas(master)
         self.scrollbar = tk.Scrollbar(master, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas)
@@ -261,11 +315,6 @@ class CameraApp:
         self.btn_remove_camera = tk.Button(self.button_frame, text="Remove Camera", command=self.remove_camera_dialog)
         self.btn_remove_camera.pack(side="left", padx=(5, 0))
 
-        self.global_confirm_button = tk.Button (
-            self.button_frame, text="Confrim Fall", command = self.confirm_fall, bg = "#dc3545", fg="white", font = ("Arial", 12, "bold"),
-            width = 15, height=2
-        )
-        self.global_confirm_button.pack(side="left", padx =(20, 0))
 
         self.create_video_labels()
         self.update_videos()
@@ -368,27 +417,22 @@ class CameraApp:
         self.fall_detected_flags.pop(index)
         self.popup_shown_flags.pop(index)
 
-
-    def confirm_fall(self) :
-        response = messagebox.askyesno ("Confirm that it was a real failure or just a Flase Alarm ?")
-
-        if response :
-            print("[CONFIRM] ผู้ดูแลยืนยันการล้ม")
-            messagebox.showinfo("ยืนยันการล้มแล้ว")
-
-        else:
-            print("[CANCLE] ยกเลิกการยืนยัน")
         
-    def show_fall_popup (self, index) :
+    def show_fall_popup (self, index):
         popup = Toplevel(self.master)
-        popup.title("แจ้งเตือน")
+        popup.title("Notifications")
         popup.geometry("300x100")
-        popup.configure(bg="white") 
+        popup.configure(bg="white")
 
-        label = tk.Label(popup, text=f" กล้อง {index+1}ตรวจพบการล้ม!", fg="red", font=("Arial", 12, "bold"), bg="white")
+        label = tk.Label(popup, text=f" Camera {index+1} FAll DETECTED!", fg="red", font=("Arial", 12, "bold"), bg="white")
         label.pack(pady=20)
 
-        popup.after (5000, popup.destroy)
+        def destroy_popup():
+            popup.destroy()
+            self.fall_detected_flags[index] = False  
+
+        popup.after(5000, destroy_popup)
+
 
 # ======================================================== Helper Function ==================================================
 
@@ -526,6 +570,62 @@ def detect_hand_raised(pose_results):
         return False
 
 
+def detect_waving_hand(pose_results):
+    try:
+        if not pose_results or not pose_results.pose_landmarks:
+            return False
+
+        landmark = pose_results.pose_landmarks.landmark
+        left_wrist_x = landmark[mp_pose.PoseLandmark.LEFT_WRIST.value].x
+        left_wrist_y = landmark[mp_pose.PoseLandmark.LEFT_WRIST.value].y
+        right_wrist_x = landmark[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
+        right_wrist_y = landmark[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
+
+        left_shoulder_y = landmark[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y
+        right_shoulder_y = landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y
+
+        # ✅ ถ้ามือทั้งสองข้างอยู่ต่ำกว่าหัวไหล่ ไม่ถือว่าโบกมือ
+        if (left_wrist_y > left_shoulder_y) and (right_wrist_y > right_shoulder_y):
+            return False
+
+        # เก็บ history ตำแหน่งมือ
+        wrist_history['left_x'].append(left_wrist_x)
+        wrist_history['left_y'].append(left_wrist_y)
+        wrist_history['right_x'].append(right_wrist_x)
+        wrist_history['right_y'].append(right_wrist_y)
+
+        def is_waving(history):
+            if len(history) < 10:
+                return False
+            movement = max(history) - min(history)
+            if movement < 0.15:
+                return False
+
+            # ตรวจจับจำนวนครั้งที่ "เปลี่ยนทิศทาง"
+            direction_changes = 0
+            for i in range(2, len(history)):
+                diff1 = history[i-1] - history[i-2]      
+                diff2 = history[i] - history[i-1]
+                if diff1 * diff2 < 0:
+                    direction_changes += 1
+            return direction_changes >= 4
+
+        waving_left = (
+            is_waving(wrist_history['left_x']) or
+            is_waving(wrist_history['left_y'])
+        )
+        waving_right = (
+            is_waving(wrist_history['right_x']) or
+            is_waving(wrist_history['right_y'])
+        )
+
+        return waving_left or waving_right
+
+    except Exception as e:
+        print(f"[ERROR] detect_waving_hand: {e}")
+        return False
+
+
 def is_patient_ok(pose_results, hands_results):
     try:
         gesture_ok = False
@@ -537,16 +637,18 @@ def is_patient_ok(pose_results, hands_results):
                     gesture_ok = True
                     break
 
-        hand_raised = detect_hand_raised(pose_results)  
+        hand_raised = detect_hand_raised(pose_results)
+        waving_hand = detect_waving_hand(pose_results)  
 
         # Debug log
-        print(f"[DEBUG] is_patient_ok: gesture_ok={gesture_ok}, hand_raised={hand_raised}")
+        print(f"[DEBUG] is_patient_ok: gesture_ok={gesture_ok}, hand_raised={hand_raised}, waving_hand={waving_hand}")
 
-        return gesture_ok or hand_raised
+        return gesture_ok or hand_raised or waving_hand  
 
     except Exception as e:
         print(f"[ERROR] is_patient_ok: {e}")
         return False
+
 
 # ================================================ Core Detection ===============================================================
 
@@ -633,7 +735,7 @@ def detect_fall(sequence, pose_results, hands_results, index):
     if len(sequence) > 29:
         sequence.pop(0)
 
-    fallen_by_z_lock = is_fallen_by_locked_z(keypoints)
+    fallen_by_z_lock = is_fallen_by_locked_z (keypoints)
     is_flat = z_variance < 0.2
 
     if current_time - last_debug_log_time[index] > 2:
@@ -723,7 +825,8 @@ def draw_landmarks(frame, pose_landmarks):
 
 # ======================================================= Threaded Stream Capture ===================================================
 
-def capture_stream(index, source, stop_event):
+
+def capture_stream(index, source, stop_event, app_gui):
     global frames, sequence_list, fall_counters
     pose = mp.solutions.pose.Pose(
         static_image_mode=False,
@@ -738,42 +841,48 @@ def capture_stream(index, source, stop_event):
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
+    
+    cap = None
 
     while not stop_event.is_set():
-        cap = cv2.VideoCapture(source)
+        if cap is None or not cap.isOpened():
+            cap = cv2.VideoCapture(source)
+            if not cap.isOpened():
+                print(f"[WARN] กล้อง {index + 1} ไม่เชื่อมต่อ")
+                with lock:
+                    temp = np.zeros((240, 320, 3), dtype=np.uint8)
+                    cv2.putText(temp, "Reconnecting...", (30, 120),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    if index < len(frames):
+                        frames[index] = temp
+                if cap:
+                    cap.release()
+                time.sleep(3)
+                continue
+            else:
+                print(f"[INFO] กล้อง {index + 1} เชื่อมต่อแล้ว")
 
-        if not cap.isOpened():
-            print(f"[WARN] กล้อง {index + 1} ไม่เชื่อมต่อ")
-            with lock:
-                temp = np.zeros((240, 320, 3), dtype=np.uint8)
-                cv2.putText(temp, "Reconnecting...", (30, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                if index < len(frames):
-                    frames[index] = temp
-            cap.release()
-            time.sleep(3)
-            continue
-
-        print(f"[INFO] กล้อง {index + 1} เชื่อมต่อแล้ว")
-
-        while not stop_event.is_set():
+        try:
             ret, frame = cap.read()
             if not ret:
                 print(f"[WARN] กล้อง {index + 1} หลุดการเชื่อมต่อ")
-                break
+                cap.release()
+                cap = None
+                time.sleep(2)
+                continue
 
             frame = cv2.resize(frame, (320, 240))
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # ✅ ประมวลผลด้วย Mediapipe
+            # ประมวลผลด้วย Mediapipe
             pose_results = pose.process(img_rgb)
             hands_results = hands_detector.process(img_rgb)
 
-            # ✅ วาด pose landmarks
+            # วาด pose landmarks
             if pose_results.pose_landmarks:
                 draw_landmarks(frame, pose_results.pose_landmarks)
 
-            # ✅ ตรวจจับท่าทาง OK
+            # ตรวจจับท่าทาง OK
             ok_gesture = False
             if hands_results.multi_hand_landmarks:
                 for hand_landmarks in hands_results.multi_hand_landmarks:
@@ -781,13 +890,17 @@ def capture_stream(index, source, stop_event):
                         ok_gesture = True
                         break
 
-            # ✅ ตรวจจับการล้ม
+            # ตรวจจับการล้ม
             if index < len(sequence_list):
                 result = detect_fall(sequence_list[index], pose_results, hands_results, index)
             else:
                 result = False
 
             if result is True:
+                fall_counters[index] = 0  # Reset counter after confirmed
+                fall_start_time[index] = None
+                app_gui.fall_detected_flags[index] = True  # ✅ บอก GUI ให้ popup
+                app_gui.popup_shown_flags[index] = False   # ✅ Reset popup flag
                 cv2.putText(frame, " FALL DETECTED ", (10, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 threading.Thread(
@@ -796,32 +909,48 @@ def capture_stream(index, source, stop_event):
                     daemon=True
                 ).start()
 
+
             if ok_gesture:
                 cv2.putText(frame, " OK Gesture Detected ", (10, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-            # ✅ แสดงชื่อกล้อง
+            # แสดงชื่อกล้อง
             cv2.rectangle(frame, (0, 0), (320, 25), (0, 0, 0), -1)
             cv2.putText(frame, f"Camera {index + 1}", (10, 18),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            # ✅ อัปเดตเฟรม
+            # อัปเดตเฟรม
             with lock:
                 if index < len(frames):
                     frames[index] = frame
 
             time.sleep(0.01)
 
-        cap.release()
-        time.sleep(2)
+        except Exception as e:
+            print(f"[ERROR] กล้อง {index + 1} processing error: {e}")
+            if cap:
+                cap.release()
+            cap = None
+            time.sleep(3)
+
+
+# ============================================  ตอบสนองเมื่อเกิดการล้ม =====================================================
+
+
+def fall_response_process(source):
+    print(f"[ALERT] FALL response triggered for source: {source}")
+    # เพิ่มการแจ้งเตือนเข้าไปยังพวกแอปได้ทีหลัง 
+
 
 # ========================================= Flask API: เพิ่มกล้อง ===================================================================
+
 
 @app.route("/add_camera", methods=["POST"])
 def add_camera():
     global stream_sources, frames, sequence_list, fall_counters
     global last_log_time, last_person_detected, last_debug_log_time, fall_start_time
     global capture_threads, capture_stop_flags
+    global app_gui
 
     data = request.json
     new_ip = data.get('ip') if data else None
@@ -859,6 +988,7 @@ def add_camera():
     return jsonify({"message": f"Camera added at index {index}", "ip": new_ip}), 200
 
 # ========================================= Flask API: Remove Camera ====================================================================
+
 
 @app.route("/remove_camera", methods=["POST"])
 def remove_camera():
@@ -934,19 +1064,19 @@ def main():
             last_debug_log_time.append(0)
             fall_start_time.append(None)
 
+    root = tk.Tk()
+    app_gui = CameraApp(root, frames, lock)  # สร้างก่อน
+
     threads = []
     stop_events = []
 
     for i, src in enumerate(stream_sources):
         stop_event = threading.Event()
         stop_events.append(stop_event)
-        t = threading.Thread(target=capture_stream, args=(i, src, stop_event))
+        t = threading.Thread(target=capture_stream, args=(i, src, stop_event, app_gui))  # ส่ง app_gui เข้าไป
         t.daemon = True
         t.start()
         threads.append(t)
-
-    root = tk.Tk()
-    app_gui = CameraApp(root, frames, lock)
 
     def run_flask():
         app.run(host='0.0.0.0', port=5001)
@@ -965,6 +1095,7 @@ def main():
         t.join(timeout=3)
 
     print("[INFO] Program Stop Successfully")
+
 
 if __name__ == "__main__":
     login_and_start()
