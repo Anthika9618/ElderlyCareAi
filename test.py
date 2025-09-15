@@ -700,6 +700,7 @@ def login_and_start():
         padx=10,
         pady=5
     )
+
     forgot_btn.image = forgot_icon
     forgot_btn.pack(pady=5, ipadx=15, padx=50)
     forgot_btn.bind("<Enter>", on_enter_forgot)
@@ -902,6 +903,7 @@ class CameraApp:
 
 
     # ================= Update video frames =================
+
     def update_videos(self):
         with self.lock:
             frames_copy = self.frames.copy()
@@ -1011,8 +1013,6 @@ class CameraApp:
 
     def back_to_camera(self):
         print("กลับมายัง CameraApp")
-
-
 
 
     # ================= Popup for Fall Detection =================
@@ -1268,11 +1268,6 @@ def is_patient_ok(pose_results, hands_results):
 # =============================================  กรณีที่ไม่ล้ม แต่อาจเกิดAccidentอื่นๆ  ==============================================
 
 def detect_fast_hand_wave(pose_results, index, window_size=15, min_swings=2):
-    """
-    ตรวจจับการกวักมือเร็ว
-    - window_size: จำนวนเฟรมย้อนหลังที่ใช้วิเคราะห์
-    - min_swings: จำนวนครั้งเปลี่ยนทิศทางขั้นต่ำ
-    """
     if not pose_results or not pose_results.pose_landmarks:
         wrist_help_wave_history[index] = []
         return False
@@ -1381,21 +1376,21 @@ def detect_help_request(pose_results, index):
 
 # ================================================ Core Detection ===============================================================
 
-
 def detect_fall(sequence, pose_results, hands_results, index):
     global last_log_time, last_person_detected, fall_counters, last_debug_log_time, fall_start_time, help_counter_hand_raised
 
     current_time = time.time()
 
-    if pose_results.pose_landmarks:
+    # ✅ ป้องกัน NoneType error
+    if pose_results is None or getattr(pose_results, "pose_landmarks", None) is None:
+        keypoints = [0.0] * 99
+        visibility = [0.0] * 33
+    else:
         keypoints = []
         visibility = []
         for lm in pose_results.pose_landmarks.landmark:
             keypoints.extend([lm.x, lm.y, lm.z])
             visibility.append(lm.visibility)
-    else:
-        keypoints = [0.0] * 99
-        visibility = [0.0] * 33
 
     if sum(keypoints) == 0.0:
         fall_counters[index] = 0
@@ -1569,9 +1564,10 @@ def draw_landmarks(frame, pose_landmarks):
 
 # ======================================================= Threaded Stream Capture ===================================================
 
-
 def capture_stream(index, source, stop_event, app_gui):
     global frames, sequence_list, fall_counters
+
+    # Mediapipe setup
     pose = mp.solutions.pose.Pose(
         static_image_mode=False,
         model_complexity=1,
@@ -1585,66 +1581,82 @@ def capture_stream(index, source, stop_event, app_gui):
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
-    
+
     cap = None
+    last_frame_time = time.time()
 
     while not stop_event.is_set():
-        if cap is None or not cap.isOpened():
-            cap = cv2.VideoCapture(source)
-            if not cap.isOpened():
-                print(f"[WARN] กล้อง {index + 1} ไม่เชื่อมต่อ")
-                with lock:
-                    temp = np.zeros((240, 320, 3), dtype=np.uint8)
-                    cv2.putText(temp, "Reconnecting...", (30, 120),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    if index < len(frames):
-                        frames[index] = temp
+        try:
+            # reconnect ถ้า cap ไม่มีหรือไม่เปิด
+            if cap is None or not cap.isOpened():
                 if cap:
                     cap.release()
-                time.sleep(3)
-                continue
-            else:
-                print(f"[INFO] กล้อง {index + 1} เชื่อมต่อแล้ว")
+                cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+                if not cap.isOpened():
+                    print(f"[WARN] กล้อง {index + 1} ไม่เชื่อมต่อ")
+                    with lock:
+                        temp = np.zeros((240, 320, 3), dtype=np.uint8)
+                        cv2.putText(temp, "Reconnecting...", (30, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        if 0 <= index < MAX_CAMERAS:
+                            frames[index] = temp
+                    time.sleep(3)
+                    continue
+                else:
+                    print(f"[INFO] กล้อง {index + 1} เชื่อมต่อแล้ว")
 
-        try:
-            ret, frame = cap.read()
-            if not ret:
-                print(f"[WARN] กล้อง {index + 1} หลุดการเชื่อมต่อ")
-                cap.release()
-                cap = None
-                time.sleep(2)
+            # skip buffer frame
+            if not cap.grab():
+                print(f"[WARN] กล้อง {index + 1} ไม่มี frame (grab fail)")
+                time.sleep(0.1)
                 continue
 
+            ret, frame = cap.retrieve()
+            if not ret or frame is None:
+                print(f"[WARN] กล้อง {index + 1} อ่าน frame ไม่ได้ (retrieve fail)")
+                time.sleep(0.1)
+                continue
+
+            last_frame_time = time.time()
+
+            # resize + convert
             frame = cv2.resize(frame, (320, 240))
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # ประมวลผลด้วย Mediapipe
-            pose_results = pose.process(img_rgb)
-            hands_results = hands_detector.process(img_rgb)
+            # process Mediapipe ครึ่ง frame
+            if index % 2 == 0:
+                try:
+                    pose_results = pose.process(img_rgb)
+                except Exception as e:
+                    print(f"[WARN] กล้อง {index + 1} pose processing failed: {e}")
+                    pose_results = None
+                try:
+                    hands_results = hands_detector.process(img_rgb)
+                except Exception as e:
+                    print(f"[WARN] กล้อง {index + 1} hands processing failed: {e}")
+                    hands_results = None
+            else:
+                pose_results, hands_results = None, None
 
-            # วาด pose landmarks
-            if pose_results.pose_landmarks:
+            # วาด landmarks ปลอดภัย
+            if pose_results is not None and getattr(pose_results, 'pose_landmarks', None) is not None:
                 draw_landmarks(frame, pose_results.pose_landmarks)
 
-            # ตรวจจับท่าทาง OK
-            ok_gesture = False
-            if hands_results.multi_hand_landmarks:
-                for hand_landmarks in hands_results.multi_hand_landmarks:
-                    if detect_gesture_ok(hand_landmarks.landmark):
-                        ok_gesture = True
-                        break
-
-            # ตรวจจับการล้ม
-            if index < len(sequence_list):
-                result = detect_fall(sequence_list[index], pose_results, hands_results, index)
+            # ตรวจจับล้ม
+            if 0 <= index < MAX_CAMERAS:
+                fall_detected, help_requested = detect_fall(
+                    sequence_list[index],
+                    pose_results,
+                    hands_results,
+                    index
+                )
             else:
-                result = False
+                fall_detected, help_requested = False, False
 
-            if result is True:
-                fall_counters[index] = 0  # Reset counter after confirmed
-                fall_start_time[index] = None
-                app_gui.fall_detected_flags[index] = True  
-                app_gui.popup_shown_flags[index] = False   
+            if fall_detected:
+                app_gui.fall_detected_flags[index] = True
+                app_gui.popup_shown_flags[index] = False
                 cv2.putText(frame, " FALL DETECTED ", (10, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 threading.Thread(
@@ -1653,22 +1665,20 @@ def capture_stream(index, source, stop_event, app_gui):
                     daemon=True
                 ).start()
 
+            # update frame ปลอดภัย
+            try:
+                with lock:
+                    if 0 <= index < MAX_CAMERAS:
+                        frames[index] = frame
+            except Exception as e:
+                print(f"[WARN] GUI update skipped: {e}")
 
-            if ok_gesture:
-                cv2.putText(frame, " OK Gesture Detected ", (10, 80),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-            # แสดงชื่อกล้อง
-            cv2.rectangle(frame, (0, 0), (320, 25), (0, 0, 0), -1)
-            cv2.putText(frame, f"Camera {index + 1}", (10, 18),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-            # อัปเดตเฟรม
-            with lock:
-                if index < len(frames):
-                    frames[index] = frame
-
-            time.sleep(0.01)
+            # reconnect ถ้าไม่ได้ frame นานเกิน 5 วินาที
+            if time.time() - last_frame_time > 5:
+                print(f"[ERROR] กล้อง {index + 1} timeout → reconnect")
+                cap.release()
+                cap = None
+                time.sleep(2)
 
         except Exception as e:
             print(f"[ERROR] กล้อง {index + 1} processing error: {e}")
@@ -1730,6 +1740,7 @@ def add_camera():
         capture_threads[index] = t
 
     return jsonify({"message": f"Camera added at index {index}", "ip": new_ip}), 200
+    
 
 # ========================================= Flask API: Remove Camera ==================================================================
 
