@@ -1608,8 +1608,10 @@ def capture_stream(index, source, stop_event, app_gui):
 
             # skip buffer frame
             if not cap.grab():
-                print(f"[WARN] กล้อง {index + 1} ไม่มี frame (grab fail)")
-                time.sleep(0.1)
+                print(f"[WARN] กล้อง {index + 1} ไม่มี frame (grab fail) → reconnect")
+                cap.release()
+                cap = None
+                time.sleep(2)
                 continue
 
             ret, frame = cap.retrieve()
