@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Smart Camera Stream Checker</title>
+
+    <!-- SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background: linear-gradient(to bottom right, #dbeafe, #f0f9ff);
+            color: #1e293b;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            background: #ffffffee;
+            border-radius: 24px;
+            padding: 40px 50px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+            text-align: center;
+            backdrop-filter: blur(5px);
+        }
+
+        h2 {
+            font-size: 2.2em;
+            font-weight: 700;
+            margin-bottom: 30px;
+            color: #0f172a;
+        }
+
+        form {
+            background: #f0f9ff;
+            padding: 30px;
+            border-radius: 18px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+            margin: 0 auto 40px;
+            width: 100%;
+            max-width: 600px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #0c4a6e;
+            font-size: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 12px;
+            margin-bottom: 20px;
+            border: 1.5px solid #3b82f6;
+            border-radius: 10px;
+            font-size: 15px;
+            transition: all 0.3s;
+            background-color: #ffffff;
+        }
+
+        input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+            outline: none;
+        }
+
+        /* ปุ่มฟอร์ม */
+        button {
+            width: auto;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+            margin-bottom: 40px;
+        }
+
+        th,
+        td {
+            padding: 18px;
+            font-size: 15px;
+        }
+
+        th {
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f0f9ff;
+        }
+
+        tr.clickable:hover {
+            background-color: #dbeafe;
+            cursor: pointer;
+            transform: scale(1.01);
+            transition: all 0.2s ease;
+        }
+
+        .success {
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .failed {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        .manual-stream {
+            background: #fff3f3;
+            padding: 30px;
+            border-radius: 18px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto 40px;
+            text-align: center;
+        }
+
+        .live-stream h3 {
+            font-size: 1.6em;
+            color: #0c4a6e;
+            margin-bottom: 15px;
+        }
+
+        img.stream {
+            border: 4px solid #3b82f6;
+            border-radius: 15px;
+            max-width: 90%;
+            height: auto;
+            margin: 15px auto;
+            display: block;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        img.stream:hover {
+            transform: scale(1.03);
+            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.3);
+        }
+
+        /* ปุ่ม Playback */
+        .playback-wrapper {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .playback-btn {
+            padding: 8px 20px;
+            border-radius: 20px;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            font-size: 14px;
+            font-weight: 600;
+            width: auto;
+        }
+
+        .playback-btn:hover {
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>🎥 Smart Camera Stream Checker</h2>
+
+        {% if error_message %}
+        <div class="failed-msg">❌ {{ error_message }}</div>
+        {% endif %}
+
+        <form method="post" action="/check_camera_stream">
+            <label>🖥️ IP Address:</label>
+            <input type="text" name="ip" required>
+
+            <label>🏷️ Brand:</label>
+            <input type="text" name="brand" required>
+
+            <label>👤 Username:</label>
+            <input type="text" name="username" required>
+
+            <label>🔒 Password:</label>
+            <input type="password" name="password" required>
+
+            <button type="submit">🔍 Check Stream</button>
+        </form>
+
+        {% if result %}
+        <h3>📊 Stream Result</h3>
+        <table>
+            <tr>
+                <th>🔌 Port Type</th>
+                <th>⚡ Port</th>
+                <th>🌐 URL</th>
+                <th>📈 Status</th>
+            </tr>
+            {% for port_type, info in result.items() %}
+            <tr class="clickable" data-url="{{ info.url }}" data-status="{{ info.status }}">
+                <td>{{ port_type }}</td>
+                <td>{{ info.port }}</td>
+                <td>{{ info.url }}</td>
+                <td class="{{ 'success' if info.status=='Stream Success' else 'failed'}}">
+                    {% if info.status == 'Stream Success' %} ✅ {{ info.status }}
+                    {% else %} ❌ {{ info.status }} {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
+
+        {% if all_failed %}
+        <div class="manual-stream" id="manual-stream-box" style="display:none;">
+            <h3>⚠️ All ports failed. Please enter RTSP URL manually:</h3>
+            <form method="POST" action="/check_camera_stream">
+                <input type="text" name="manual_url" placeholder="rtsp://username:password@ip:port/..." required>
+                <button type="submit">🔁 Try Stream</button>
+            </form>
+        </div>
+        <script>
+            Swal.fire({
+                icon: 'error',
+                title: '❌ Stream Failed',
+                text: 'All ports failed. Please enter RTSP URL manually.',
+                confirmButtonColor: '#3b82f6',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                document.getElementById('manual-stream-box').style.display = 'block';
+            });
+        </script>
+        {% endif %}
+
+        {% if manual_result %}
+        <h3>📝 Manual Stream Result:</h3>
+        <p class="{{ 'success' if manual_result=='Stream Success' else 'failed'}}">
+            {% if manual_result == 'Stream Success' %} ✅ {{ manual_result }}
+            {% else %} ❌ {{ manual_result }} {% endif %}
+        </p>
+        {% endif %}
+
+        {% if selected_devices_global %}
+        <div class="live-stream">
+            <h3>🎬 Live Stream</h3>
+            {% for device in selected_devices_global %}
+            {% if device.rtsp_url %}
+            <h4>📺 {{ device.device_name }}</h4>
+            <img class="stream clickable" data-url="{{ url_for('video_feed', cam_index=loop.index0) }}"
+                data-status="Stream Success" src="{{ url_for('video_feed', cam_index=loop.index0) }}">
+            {% else %}
+            <p>⚠️ {{ device.device_name }}: No RTSP URL available</p>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if result or manual_result or selected_devices_global %}
+        <div class="playback-wrapper">
+            <a href="{{ url_for('playback') }}">
+                <button class="playback-btn">▶ Playback</button>
+            </a>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        document.querySelectorAll('.clickable').forEach(function (row) {
+            row.addEventListener('click', function () {
+                const status = row.getAttribute('data-status');
+                const url = row.getAttribute('data-url');
+
+                if (status !== 'Stream Success') {
+                    Swal.fire({
+                        icon: 'error',
+                        title: '❌ Stream Failed',
+                        text: 'Please enter RTSP URL manually.',
+                        confirmButtonColor: '#3b82f6'
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ Stream Success',
+                        text: 'Click OK to open the camera stream.',
+                        confirmButtonColor: '#3b82f6'
+                    }).then(() => {
+                        window.open(url, '_blank');
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

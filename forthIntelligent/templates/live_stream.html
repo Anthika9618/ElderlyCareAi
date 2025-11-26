@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎥 Live Camera Stream</title>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f3f4f6;
+        margin: 0;
+        padding: 0;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: 40px auto;
+        padding: 30px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    }
+
+    h2 {
+        text-align: center;
+        color: #1f2937;
+        margin-bottom: 25px;
+    }
+
+    .camera-info {
+        background: #ffffff;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .camera-info div {
+        font-size: 16px;
+        color: #444;
+    }
+
+    .camera-info .status {
+        font-weight: bold;
+        color: #1aa331;
+    }
+
+    form {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 15px 20px;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    label {
+        font-weight: 600;
+        color: #374151;
+    }
+
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"], input[type="time"] {
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        width: 100%;
+        box-sizing: border-box;
+        transition: border-color 0.3s;
+    }
+
+    input:focus {
+        border-color: #3b82f6;
+        outline: none;
+    }
+
+    button {
+        grid-column: 1 / span 2;
+        padding: 12px;
+        background-color: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    button:hover {
+        background-color: #2563eb;
+    }
+
+    .stream-result {
+        text-align: center;
+    }
+
+    .stream-result h3::before {
+        content: "📺 ";
+    }
+
+    .stream-result img {
+        width: 100%;
+        max-width: 880px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        margin-top: 10px;
+    }
+
+    @media (max-width: 600px) {
+        form {
+            grid-template-columns: 1fr;
+        }
+
+        button {
+            grid-column: 1;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h2>🎬 Live Camera Stream</h2>
+
+    <!-- Camera Info Header -->
+    <div class="camera-info">
+        <div>🎯 Camera: Office-1</div>
+        <div>📡 IP Address: <strong>192.168.1.100</strong></div>
+        <div>🔌 Channel: <strong>1</strong> | 🎞 Subtype: <strong>1</strong></div>
+        <div class="status">✅ Status: Online</div>
+    </div>
+
+    <!-- Stream Form -->
+    <form id="streamForm">
+        <label>🌐 IP Address:</label>
+        <input type="text" id="ip" value="192.168.1.100" required>
+
+        <label>👤 User:</label>
+        <input type="text" id="user" value="admin" required>
+
+        <label>🔑 Password:</label>
+        <input type="password" id="pwd" value="password" required>
+
+        <label>📺 Channel:</label>
+        <input type="number" id="channel" value="1" required>
+
+        <label>🔄 Subtype:</label>
+        <input type="number" id="subtype" value="1" required>
+
+        <button type="button" onclick="playStream()">▶️ Play Stream</button>
+    </form>
+
+    <!-- Stream Result -->
+    <div class="stream-result">
+        <h3>Live Stream</h3>
+        <img id="liveStream" src="" alt="Live Stream">
+    </div>
+</div>
+
+<script>
+function playStream() {
+    const ip = document.getElementById("ip").value;
+    const user = document.getElementById("user").value;
+    const pwd = document.getElementById("pwd").value;
+    const channel = document.getElementById("channel").value;
+    const subtype = document.getElementById("subtype").value;
+
+    const url =
+        `/video_feed?ip=${encodeURIComponent(ip)}` +
+        `&user=${encodeURIComponent(user)}` +
+        `&pwd=${encodeURIComponent(pwd)}` +
+        `&channel=${channel}` +
+        `&subtype=${subtype}`;
+
+    document.getElementById("liveStream").src = url;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <title>🏠 Home - Room Configuration</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #1565c0;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 30px 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            margin-bottom: 40px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #0d47a1;
+        }
+
+        select,
+        textarea {
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #90caf9;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        select:focus,
+        textarea:focus {
+            border-color: #1976d2;
+            box-shadow: 0 0 8px rgba(25, 118, 210, 0.3);
+        }
+
+        button.save-btn {
+            background: linear-gradient(135deg, #4caf50, #81c784);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button.save-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ปรับสีปุ่ม Scan ONVIF ให้เหมือน Save Room */
+        #scan-onvif-btn {
+            background: linear-gradient(135deg, #42a5f5, #64b5f6);
+        }
+
+        #scan-onvif-btn:hover {
+            background: linear-gradient(135deg, #1e88e5, #42a5f5);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 15px 20px;
+            text-align: left;
+            font-size: 1rem;
+        }
+
+        th {
+            background: #1976d2;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background: #f1f1f1;
+        }
+
+        button.action-btn {
+            border: none;
+            padding: 8px 15px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        button.connect {
+            background: #4caf50;
+        }
+
+        button.connect:hover {
+            background: #43a047;
+        }
+
+        button.disconnect {
+            background: #ff9800;
+        }
+
+        button.disconnect:hover {
+            background: #fb8c00;
+        }
+
+        button.delete {
+            background: #f44336;
+        }
+
+        button.delete:hover {
+            background: #e53935;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🏠 Home - Room Configuration</h1>
+
+        <!-- FORM -->
+        <div class="card">
+            <form method="post" id="room-form">
+                <label>เลือกประเภทห้อง (Room Type):</label>
+                <select name="room_type_id" required>
+                    <option value="">-- เลือกประเภทห้อง --</option>
+                    {% for rt in room_types %}
+                    <option value="{{ rt.room_type_id }}">{{ rt.room_type_name }} ({{ rt.room_type_name_en }})</option>
+                    {% endfor %}
+                </select>
+
+                <label>รายละเอียดเพิ่มเติม:</label>
+                <textarea name="detail" rows="3" placeholder="เช่น ขนาดของห้อง... หรืออยู่ชั้นไหน"></textarea>
+
+                <div class="button-group">
+                    <button type="submit" class="save-btn">💾 Save Room</button>
+                    <button type="button" class="save-btn" id="scan-onvif-btn">🔍 Scan ONVIF</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- TABLE -->
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Room Name</th>
+                        <th>Detail</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="room-table-body">
+                    {% for room in rooms %}
+                    <tr data-id="{{ room.room_id }}">
+                        <td>{{ room.room_name }}</td>
+                        <td>{{ room.detail }}</td>
+                        <td>
+                            <button class="action-btn connect"><i class="fas fa-plug"></i> Connect</button>
+                            <button class="action-btn delete"><i class="fas fa-trash"></i> Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Save Room
+        document.getElementById('room-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/config_room', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire({ icon: 'success', title: 'Saved!', text: 'การตั้งค่าห้องถูกบันทึกเรียบร้อยแล้ว', timer: 2000, showConfirmButton: false });
+                        setTimeout(() => location.reload(), 2100);
+                    } else Swal.fire('Error!', 'บันทึกไม่สำเร็จ', 'error');
+                }).catch(err => Swal.fire('Error!', err.message, 'error'));
+        });
+
+        // Scan ONVIF
+        document.getElementById('scan-onvif-btn').addEventListener('click', () => window.location.href = '/scan_onvif');
+
+        // Toggle Connect/Disconnect with icon
+        document.querySelectorAll('.connect, .disconnect').forEach(btn => {
+            btn.addEventListener('click', toggleConnection);
+        });
+
+        function toggleConnection(e) {
+            e.preventDefault();
+            const button = e.currentTarget;
+            const row = button.closest('tr');
+            const roomName = row.querySelector('td').innerText;
+
+            if (button.classList.contains('connect')) {
+                Swal.fire({
+                    title: 'Disconnect Sensor?',
+                    text: `ต้องการตัดการเชื่อมต่อกับ Sensor ของห้อง "${roomName}" หรือไม่?`,
+                    icon: 'info',
+                    confirmButtonColor: '#ff9800',
+                    confirmButtonText: 'Disconnect',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancel'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        button.innerHTML = '<i class="fas fa-plug"></i> Disconnect';
+                        button.classList.remove('connect');
+                        button.classList.add('disconnect');
+                        Swal.fire('Disconnected!', 'การเชื่อมต่อ Sensor ถูกตัดเรียบร้อยแล้ว', 'success');
+                    }
+                });
+            } else {
+                Swal.fire({
+                    title: 'Connect Sensor?',
+                    text: `ต้องการเชื่อมต่อกับ Sensor ของห้อง "${roomName}" หรือไม่?`,
+                    icon: 'info',
+                    confirmButtonColor: '#4caf50',
+                    confirmButtonText: 'Connect',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancel'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        button.innerHTML = '<i class="fas fa-plug"></i> Connect';
+                        button.classList.remove('disconnect');
+                        button.classList.add('connect');
+                        Swal.fire('Connected!', 'เชื่อมต่อ Sensor เรียบร้อยแล้ว', 'success');
+                    }
+                });
+            }
+        }
+
+        // Delete
+        document.querySelectorAll('.delete').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                const row = e.target.closest('tr');
+                const roomId = row.dataset.id;
+                if (!roomId) { Swal.fire('Error!', 'Room ID ไม่ถูกต้อง', 'error'); return; }
+                Swal.fire({
+                    title: 'Delete Room Configuration?',
+                    text: `แน่ใจว่าต้องการลบการตั้งค่าห้อง "${row.querySelector('td').innerText}"?`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f44336',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Delete',
+                    cancelButtonText: 'Cancel'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        fetch(`/delete_room/${roomId}`, { method: 'POST' })
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data.success) { row.remove(); Swal.fire('Deleted!', 'การตั้งค่าห้องถูกลบเรียบร้อยแล้ว', 'success'); }
+                                else Swal.fire('Error!', data.message, 'error');
+                            }).catch(err => Swal.fire('Error!', err.message, 'error'));
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

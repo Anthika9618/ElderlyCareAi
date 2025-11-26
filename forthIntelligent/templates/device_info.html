@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <title>🖥️ SETUP DEVICE</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(180deg, #f0f4f8, #d9e2ec, #bcccdc);
+            color: #0a2e49;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            padding: 30px 0;
+            font-size: 2.2em;
+            color: #0a2e49;
+        }
+
+        .container {
+            width: 85%;
+            max-width: 900px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 15px;
+            padding: 30px 40px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        label {
+            font-weight: bold;
+            color: #0a2e49;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #bcccdc;
+            outline: none;
+            font-size: 1rem;
+            background: #f0f4f8;
+            color: #0a2e49;
+            width: 100%;
+        }
+
+        .device-card {
+            background: #e1e8f0;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        .device-card::before {
+            content: "🖥️";
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 1.5rem;
+        }
+
+        .device-card strong {
+            color: #1f4f75;
+        }
+
+        button {
+            background: #0a2e49;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            color: #ffffff;
+            font-size: 1rem;
+        }
+
+        button:hover {
+            background: #1f4f75;
+            transform: scale(1.05);
+        }
+
+        .footer {
+            text-align: center;
+            margin: 30px 0 10px;
+            font-size: 0.9em;
+            color: #334e68;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🖥️ SETUP DEVICE </h1>
+    <div class="container">
+        <form method="post" action="/save_device" id="device-form">
+            {% for device in selected_devices %}
+            <div class="device-card">
+                <p><strong>📷 กล้องตัวที่ {{ loop.index }}</strong></p>
+                <p><strong>📡 IP:</strong> {{ device.ip }}</p>
+                <p><strong>🌐 XAddr:</strong>{{ device.xaddr}}</p>
+                <p><strong>🏷️ Brand:</strong> {{ device.brand }}</p>
+                <p><strong>📌 Model:</strong> {{ device.model }}</p>
+
+                <label>Username ✏️:</label>
+                <input type="text" name="username_{{ loop.index }}" placeholder="Username">
+
+                <label>Password 🔒:</label>
+                <input type="password" name="password_{{ loop.index }}" placeholder="Password">
+
+                <label>Device Name 🏷️:</label>
+                <input type="text" name="device_name_{{ loop.index }}" placeholder="Device Name">
+
+                <label>Location 📍:</label>
+                <input type="text" name="location_{{ loop.index }}" placeholder="Location">
+            </div>
+            {% endfor %}
+
+            <div style="text-align:center; margin-top:20px;">
+                <button type="submit">💾 Save</button>
+            </div>
+        </form>
+    </div>
+    <div class="footer">© 2025 Smart ONVIF Scanner Interface</div>
+
+    <script>
+        document.getElementById('device-form').addEventListener('submit', function (e) {
+            e.preventDefault(); // ป้องกัน submit ปกติ
+            const formData = new FormData(this);
+
+            // Confirm dialog ก่อนบันทึก
+            Swal.fire({
+                title: 'ยืนยันการบันทึก?',
+                text: "คุณต้องการบันทึกข้อมูลอุปกรณ์ทั้งหมดหรือไม่?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#4caf50',
+                cancelButtonColor: '#f44336',
+                confirmButtonText: 'บันทึก',
+                cancelButtonText: 'ยกเลิก'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const saveButton = document.querySelector('#device-form button[type="submit"]');
+                    saveButton.disabled = true;
+                    saveButton.textContent = '💾 กำลังบันทึก...';
+                    saveButton.style.opacity = 0.7;
+
+                    try {
+                        const res = await fetch(e.target.action, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+
+                        if (data.status === 'success') {
+                            Swal.fire({
+                                title: 'บันทึกสำเร็จ!',
+                                html: `<p>ข้อมูลอุปกรณ์ถูกบันทึกเรียบร้อยแล้ว</p>`,
+                                icon: 'success',
+                                confirmButtonColor: '#4caf50',
+                                showClass: { popup: 'animate__animated animate__fadeInDown' },
+                                hideClass: { popup: 'animate__animated animate__fadeOutUp' }
+                            }).then(() => {
+                                // redirect ไปหน้า camera_checker
+                                window.location.href = '/camera_checker';
+                            });
+                        } else {
+                            Swal.fire('เกิดข้อผิดพลาด', data.message, 'error');
+                        }
+                    } catch (err) {
+                        Swal.fire('เกิดข้อผิดพลาด', err, 'error');
+                    } finally {
+                        saveButton.disabled = false;
+                        saveButton.textContent = '💾 Save';
+                        saveButton.style.opacity = 1;
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
