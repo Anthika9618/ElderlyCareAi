@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <title>📡 Smart MQTT Device Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 20px;
+      box-sizing: border-box;
+      gap: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #0d47a1;
+      margin-bottom: 20px;
+    }
+
+    .charts {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    canvas {
+      background: linear-gradient(180deg, #ffffff, #90caf9);
+      border-radius: 12px;
+      padding: 10px;
+      width: 500px !important;
+      height: 350px !important;
+    }
+
+    .filters {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filters input {
+      padding: 10px 14px;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      width: 360px;
+      font-size: 15px;
+    }
+
+    button {
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background-color: #0d47a1;
+    }
+
+    table.dataTable {
+      width: 100% !important;
+      border-collapse: collapse;
+      background: #e3f2fd;
+    }
+
+    th {
+      background: #0d47a1;
+      color: #ffffff;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    td {
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      color: #0d47a1;
+    }
+
+    tr:nth-child(even) {
+      background-color: #bbdefb;
+    }
+
+    tr:hover {
+      background-color: #90caf9;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 18px;
+      color: #0d47a1;
+      font-size: 13px;
+    }
+
+    .dataTables_wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+
+    .battery-zero {
+      animation: blink 1s infinite;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>📊 Smart MQTT Device Dashboard</h1>
+
+    <div class="charts">
+      <canvas id="tempChart"></canvas>
+      <canvas id="batteryChart"></canvas>
+    </div>
+
+    <div class="filters">
+      <input type="text" id="filterKeyword" placeholder="🔎 ค้นหา เช่น MAC, device_id...">
+      <button id="btnSearch">ค้นหา</button>
+      <button id="btnClear">ล้าง</button>
+    </div>
+
+    <table id="deviceTable" class="display">
+      <thead>
+        <tr>
+          <th>📟 Device ID</th>
+          <th>🖧 MAC</th>
+          <th>💡 State</th>
+          <th>🌡️ Temp</th>
+          <th>💧 Hum</th>
+          <th>📶 RSSI</th>
+          <th>🔋 Battery</th>
+          <th>🏃 MoveCount</th>
+          <th>📐 Pitch</th>
+          <th>🔄 Roll</th>
+          <th>🧍‍♂️ Human</th>
+          <th>⚠️ Fall</th>
+          <th>❤️ Heart Rate</th>
+          <th>🌬️ Breath Rate</th>
+          <th>📏 Distance</th>
+          <th>🕒 Timestamp</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <footer>© 2025 Smart IoT Dashboard</footer>
+  </div>
+
+  <script>
+    let table, tempChart, batteryChart;
+
+    async function fetchData(keyword = "", page = 1, per_page = 100) {
+      const qs = new URLSearchParams({ keyword, page, per_page, _t: Date.now() });
+      const response = await fetch(`/api/device_logs?${qs.toString()}`);
+      if (!response.ok) return [];
+      return await response.json();
+    }
+
+    async function loadData() {
+      const keyword = $("#filterKeyword").val() || "";
+      const data = await fetchData(keyword, 1, 100);
+
+      const minBattery = 1800;
+      const maxBattery = 3000;
+
+      data.forEach(d => {
+        let percent = Math.round((d.battery - minBattery) / (maxBattery - minBattery) * 100);
+        percent = Math.min(Math.max(percent, 0), 100);
+        d.battery_percent = percent;
+      });
+
+      if (!table) {
+        table = $("#deviceTable").DataTable({
+          data: data,
+          columns: [
+            { data: "device_id" },
+            { data: "mac" },
+            { data: "state" },
+            { data: "temp" },
+            { data: "hum" },
+            { data: "rssi" },
+            {
+              data: null,
+              render: d => {
+                if (d.battery_percent === 0) {
+                  return `<span class="battery-zero">⚠️🔋 0%</span>`;
+                }
+                return `${d.battery} mV / ${d.battery_percent}%`;
+              }
+            },
+            { data: "movecount" },
+            { data: "pitch" },
+            { data: "roll" },
+            { data: "human" },
+            { data: "fall" },
+            { data: "hart_rate" },
+            { data: "breath_rate" },
+            { data: "distance" },
+            { data: "time_stamp", render: d => d ? d : "" }
+          ],
+          pageLength: 10,
+          order: [[15, "desc"]],
+          autoWidth: false,
+          responsive: true,
+          searching: false
+        });
+      } else {
+        table.clear().rows.add(data).draw();
+      }
+
+      const last5 = data.slice(-5);
+      const labels = last5.map(d => `📟 ${d.device_id}`);
+      const tempData = last5.map(d => parseFloat(d.temp) || 0);
+      const batteryData = last5.map(d => d.battery_percent);
+
+      const tempColors = ['#42a5f5', '#1e88e5', '#1976d2', '#1565c0', '#0d47a1'];
+      const batteryColors = batteryData.map(b => b === 0 ? '#e53935' : '#43a047');
+
+      // Temp Chart
+      if (!tempChart) {
+        const ctx = document.getElementById('tempChart').getContext('2d');
+        tempChart = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: '🌡️ Temperature (°C)', data: tempData, backgroundColor: tempColors, borderRadius: 8, barPercentage: 0.6, categoryPercentage: 0.7 }] },
+          options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 16, weight: 'bold' } } } }, scales: { x: { ticks: { font: { size: 14 } } }, y: { beginAtZero: true, ticks: { font: { size: 14 } } } } }
+        });
+      } else {
+        tempChart.data.labels = labels;
+        tempChart.data.datasets[0].data = tempData;
+        tempChart.update();
+      }
+
+      // Battery Chart
+      if (!batteryChart) {
+        const ctx = document.getElementById('batteryChart').getContext('2d');
+        batteryChart = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: '🔋 Battery (%)', data: batteryData, backgroundColor: batteryColors, borderRadius: 8, barPercentage: 0.6, categoryPercentage: 0.7 }] },
+          options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 16, weight: 'bold' } } } }, scales: { x: { ticks: { font: { size: 14 } } }, y: { beginAtZero: true, ticks: { font: { size: 14 }, max: 100 } } } }
+        });
+      } else {
+        batteryChart.data.labels = labels;
+        batteryChart.data.datasets[0].data = batteryData;
+        batteryChart.data.datasets[0].backgroundColor = batteryColors;
+        batteryChart.update();
+      }
+
+      // Click Battery 0% for Swal
+      $('#deviceTable tbody').off('click').on('click', 'span.battery-zero', function() {
+        const rowData = table.row($(this).closest('tr')).data();
+        Swal.fire({
+          icon: 'warning',
+          title: `⚠️ แบตเตอรี่ของ Device ${rowData.device_id} หมดแล้ว!`,
+          text: `Battery: 0%`,
+          confirmButtonText: 'ตกลง'
+        });
+      });
+    }
+
+    $(document).ready(function () {
+      loadData();
+      setInterval(loadData, 5000);
+      $("#btnSearch").click(loadData);
+      $("#btnClear").click(() => { $("#filterKeyword").val(""); loadData(); });
+      $("#filterKeyword").on("keyup", e => { if (e.key === "Enter") loadData(); });
+    });
+  </script>
+</body>
+
+</html>
